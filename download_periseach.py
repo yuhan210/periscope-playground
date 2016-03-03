@@ -1,3 +1,6 @@
+import traceback
+import os
+import time
 import re
 import urllib2
 from pyvirtualdisplay import Display
@@ -22,12 +25,20 @@ def replace_extension(filename, ext, expected_real_ext=None):
         ext)
 
     
+## get new video name without extension
+def getNewVideoName(videoname):
+
+    nstr = re.sub(r'[?|$|.|!]',r'', videoname)
+    nestr = nestr = re.sub(r'[^a-zA-Z0-9 ]',r'',nstr)
+    new_videoname = '_'.join([str(x).lower() for x in nestr.split(' ')])
+
+    return new_videoname
+
+
 def get_metadata(url, filename):
 
-    watch_urls = []
     try:
         html_doc = urllib2.urlopen(url).readlines()
-
     except urllib2.URLError, e:
         # For Python 2.7
         print 'URLError %r' % e
@@ -62,10 +73,9 @@ def parse_perisearch():
         for seg in segs[1:]:
             chunks += [seg]
         for seg in chunks:
-            #print seg
             #<a href="/w/1YpKkaOvwzVJj">
             m = re.search(r'<a href="([A-Za-z0-9_/]+)', seg)
-            print  m.group(1)
+            #print  m.group(1)
             broadcast_ids += [m.group(1)]
         driver.quit()
         display.stop()
@@ -73,45 +83,39 @@ def parse_perisearch():
     except:
         return
 
-    return broadcast_ids
+    return list(set(broadcast_ids))
 
-def download_video(urls):
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        for url in urls:
-            try:
-                get_metadata(url, 'tmp')
-                ret, ress = ydl.download([url])
-                metadata_fname = ress[0]['title'] + '-' + ress[0]['id'] + '.metadata'
-		print 'metadata_name:', metadata_fname
-            except:
-                print 'Download Error'
-                continue
 
-def download_videos(ids):
+def download_videos(ids, DEST_FOLDER = './videos'):
   
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         for bid in ids:
             url = 'https://www.periscope.tv' + bid
             #get_metadata(url, 'tmp')
             try: 
-                print url
-                ret = ydl.download([url])
-   
+                ret, res = ydl.download([url])
+                prefix = res['title'] + '-' + res['id']
+                new_prefix = getNewVideoName(prefix) 
+
+                get_metadata(url,  os.path.join(DEST_FOLDER, new_prefix + '.metadata'))
+
+                files = [prefix + '.mp4', prefix  + '.info.json']
+                new_files = [new_prefix + '.mp4', new_prefix  + '.info.json']
+
+                for fid, f in enumerate(files):
+                    if os.path.exists(f):
+                        os.rename(f, os.path.join(DEST_FOLDER, new_files[fid]))
+
             except:
-                print 'Download Error'
+                print 'Error:', traceback.format_exc()
                 continue
 
 if __name__ == "__main__":
 
-    #with closing(Firefox()) as browser:
-    #    browser.get(url)
-        #button = browser.find_element_by_name('button')
-        #button.click()
-        # wait for the page to load
-        #WebDriverWait(browser, timeout=10).until(lambda x: x.find_element_by_id('someId_that_must_be_on_new_page'))
-        # store it to string variable
-    #    page_source = browser.page_source
-    #print(page_source)
-
-    broadcast_ids = parse_perisearch()
-    download_videos(broadcast_ids)
+    DEST_FOLDER = './videos'
+    while True:
+        if len(os.listdir(DEST_FOLDER)) >= 5000 * 3 + 1000:
+            break
+        broadcast_ids = parse_perisearch()
+        download_videos(broadcast_ids)
+        time.sleep(2 * 60)
